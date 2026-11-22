@@ -4,7 +4,21 @@ image:
 
 port: 8080
 
+envFrom:
+  - configMapRef:
+      name: oidc-config
+
 env:
+  - name: OIDC_WORKER_CLIENT_ID
+    valueFrom:
+      secretKeyRef:
+        name: oidc-worker-credentials
+        key: OIDC_WORKER_CLIENT_ID
+  - name: OIDC_WORKER_CLIENT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: oidc-worker-credentials
+        key: OIDC_WORKER_CLIENT_SECRET
   - name: LIBRARY_SERVICE_URL
     value: http://library-service:8060
   - name: RATING_SERVICE_URL

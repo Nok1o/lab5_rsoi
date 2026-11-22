@@ -6,11 +6,14 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"libriary_system/shared/auth"
 )
 
 type Config struct {
 	HTTPAddress string
 	DatabaseURL string
+	OIDC        auth.Config
 }
 
 func Load() (Config, error) {
@@ -40,7 +43,11 @@ func Load() (Config, error) {
 	if err != nil || (parsedURL.Scheme != "postgres" && parsedURL.Scheme != "postgresql") || parsedURL.Host == "" || strings.Trim(parsedURL.Path, "/") == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL must be a valid postgres URL with host and database name")
 	}
-	return Config{HTTPAddress: ":" + port, DatabaseURL: databaseURL}, nil
+	oidc, err := auth.LoadConfig()
+	if err != nil {
+		return Config{}, err
+	}
+	return Config{HTTPAddress: ":" + port, DatabaseURL: databaseURL, OIDC: oidc}, nil
 }
 
 func envOrDefault(key, fallback string) string {

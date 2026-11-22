@@ -4,6 +4,10 @@ image:
 
 port: 8060
 
+envFrom:
+  - configMapRef:
+      name: oidc-config
+
 env:
   - name: DB_HOST
     value: library-infra-postgresql

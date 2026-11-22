@@ -6,6 +6,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"libriary_system/shared/auth"
 )
 
 const defaultPort = "8060"
@@ -13,6 +15,7 @@ const defaultPort = "8060"
 type Config struct {
 	HTTPAddress string
 	DatabaseURL string
+	OIDC        auth.Config
 }
 
 func Load() (Config, error) {
@@ -29,10 +32,15 @@ func Load() (Config, error) {
 	if err := validateDatabaseURL(databaseURL); err != nil {
 		return Config{}, err
 	}
+	oidc, err := auth.LoadConfig()
+	if err != nil {
+		return Config{}, err
+	}
 
 	return Config{
 		HTTPAddress: ":" + port,
 		DatabaseURL: databaseURL,
+		OIDC:        oidc,
 	}, nil
 }
 

@@ -29,6 +29,9 @@ port: 8080
 # Do not add PORT here; change port above instead.
 env: []
 
+# Shared public settings only. Import secrets individually through env.
+envFrom: []
+
 resources:
   requests:
     cpu: 50m

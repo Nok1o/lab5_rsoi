@@ -37,6 +37,10 @@ if [[ "$mode" == deploy ]]; then
   echo "Deploying to context=$context namespace=$namespace" >&2
   kubectl --context "$context" --namespace "$namespace" get secret \
     postgresql-credentials redis-credentials >/dev/null
+  kubectl --context "$context" --namespace "$namespace" get configmap oidc-config >/dev/null
+  if [[ "$target" == all || "$target" == gateway ]]; then
+    kubectl --context "$context" --namespace "$namespace" get secret oidc-worker-credentials >/dev/null
+  fi
 fi
 
 for service in "${services[@]}"; do

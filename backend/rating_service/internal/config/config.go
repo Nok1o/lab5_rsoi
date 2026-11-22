@@ -6,6 +6,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"libriary_system/shared/auth"
 )
 
 const defaultPort = "8050"
@@ -13,6 +15,7 @@ const defaultPort = "8050"
 type Config struct {
 	HTTPAddress string
 	DatabaseURL string
+	OIDC        auth.Config
 }
 
 func Load() (Config, error) {
@@ -31,7 +34,11 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("DATABASE_URL must be a valid postgres URL with host and database name")
 	}
 
-	return Config{HTTPAddress: ":" + port, DatabaseURL: databaseURL}, nil
+	oidc, err := auth.LoadConfig()
+	if err != nil {
+		return Config{}, err
+	}
+	return Config{HTTPAddress: ":" + port, DatabaseURL: databaseURL, OIDC: oidc}, nil
 }
 
 func buildDatabaseURL() string {
