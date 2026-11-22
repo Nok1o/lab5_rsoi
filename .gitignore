@@ -1234,3 +1234,18 @@ buildNumber.properties
 .mvn/timing.properties
 # https://github.com/takari/maven-wrapper#usage-without-binary-jar
 .mvn/wrapper/maven-wrapper.jar
+
+# Go application sources and PostgreSQL initialization scripts.
+!/backend/go.mod
+!/backend/shared/log/
+!/backend/shared/log/*.go
+!/postgres/scripts/
+!/postgres/scripts/*.sql
+!/scripts/
+!/scripts/*.sh
+
+# Local credentials and generated test/CI configuration are never sources.
+.env.*
+!.env.example
+/.github/classroom/cloud-test.env
+/test-reports/
