@@ -4,8 +4,9 @@
   "version": "1.0.0",
   "engines": { "node": ">=22" },
   "scripts": {
-    "test": "node --test run-postman.test.js",
-    "test:api": "node run-postman.js v4"
+    "test": "node --test *.test.js",
+    "test:api": "node run-postman.js v4",
+    "test:worker": "node test-worker.js"
   },
   "dependencies": { "newman": "6.2.1" }
 }

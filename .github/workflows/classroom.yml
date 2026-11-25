@@ -105,6 +105,9 @@ jobs:
       - name: Run Lab5 OAuth collection
         id: oauth_test
         run: bash scripts/test-script.sh v4
+      - name: Verify deferred worker with real Auth0 M2M credentials
+        id: worker_test
+        run: npm run test:worker --prefix scripts
       # The Classroom command grader intentionally strips the child's env.
       # Run OAuth in a normal step; grade only its sanitized report and outcome.
       - name: Grade Lab5 OAuth collection
@@ -115,8 +118,10 @@ jobs:
           test-name: Run Postman
           command: >-
             test '${{ steps.oauth_test.outcome }}' = success &&
+            test '${{ steps.worker_test.outcome }}' = success &&
             test -s test-reports/newman.xml &&
-            grep --quiet '<testsuites><testsuite name="Lab5 OAuth collection" tests="[0-9]*" failures="0">' test-reports/newman.xml
+            grep --quiet '<testsuites><testsuite name="Lab5 OAuth collection" tests="[0-9]*" failures="0">' test-reports/newman.xml &&
+            grep --quiet '<testsuites><testsuite name="Lab5 Auth0 deferred worker" tests="8" failures="0">' test-reports/worker.xml
           timeout: 3
           max-score: 10
       - name: Publish Classroom result
@@ -131,7 +136,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: lab5-oauth-assertions
-          path: ${{ env.TEST_REPORT_DIR }}/newman.xml
+          path: |
+            ${{ env.TEST_REPORT_DIR }}/newman.xml
+            ${{ env.TEST_REPORT_DIR }}/worker.xml
           if-no-files-found: ignore
           retention-days: 3
       - name: Preserve failure even if a grading action only publishes a score
@@ -140,6 +147,8 @@ jobs:
         run: |
           test -s "$TEST_REPORT_DIR/newman.xml"
           grep --quiet '<testsuites><testsuite name="Lab5 OAuth collection" tests="[0-9]*" failures="0">' "$TEST_REPORT_DIR/newman.xml"
+          test '${{ steps.worker_test.outcome }}' = success
+          grep --quiet '<testsuites><testsuite name="Lab5 Auth0 deferred worker" tests="8" failures="0">' "$TEST_REPORT_DIR/worker.xml"
       - name: Service state on failure (no environment/body dumps)
         if: failure() && steps.configuration.outcome == 'success'
         run: docker compose --env-file /dev/null --project-name "$COMPOSE_PROJECT_NAME" ps --all
