@@ -17,6 +17,7 @@ import (
 	"libriary_system/gateway_service/internal/domain"
 	"libriary_system/gateway_service/internal/usecase"
 	"libriary_system/pkg"
+	"libriary_system/shared/auth"
 )
 
 const maxResponseBodySize = 1 << 20
@@ -59,7 +60,7 @@ func NewClient(rawBaseURL string, httpClient *http.Client, breaker *pkg.CircuitB
 	if breaker == nil {
 		breaker = pkg.NewCircuitBreaker(pkg.CircuitBreakerConfig{})
 	}
-	return &Client{baseURL: baseURL, httpClient: httpClient, breaker: breaker}, nil
+	return &Client{baseURL: baseURL, httpClient: auth.NewHTTPClient(httpClient, auth.RequestTokenSource{}), breaker: breaker}, nil
 }
 
 func (client *Client) ListByUsername(ctx context.Context, username string) ([]domain.Reservation, error) {
@@ -189,7 +190,6 @@ func (client *Client) do(
 	if err != nil {
 		return fmt.Errorf("create reservation request: %w", err)
 	}
-	request.Header.Set("X-User-Name", username)
 	request.Header.Set("Accept", "application/json")
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")

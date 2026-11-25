@@ -15,6 +15,7 @@ import (
 	ratinghttp "libriary_system/rating_service/internal/delivery/http"
 	"libriary_system/rating_service/internal/repository/postgres"
 	"libriary_system/rating_service/internal/usecase"
+	"libriary_system/shared/auth"
 	"libriary_system/shared/log"
 )
 
@@ -27,6 +28,22 @@ func main() {
 
 	startupCtx, cancelStartup := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancelStartup()
+	verifier, err := auth.NewVerifier(startupCtx, cfg.OIDC, nil)
+	if err != nil {
+		log.Error("initialize OIDC verifier", "error", err)
+		os.Exit(1)
+	}
+	userAuth, err := auth.NewMiddleware(verifier, cfg.OIDC.Audience)
+	if err != nil {
+		log.Error("configure user authentication", "error", err)
+		os.Exit(1)
+	}
+	workerAuth, err := auth.NewMiddleware(verifier, cfg.OIDC.InternalAudience)
+	if err != nil {
+		log.Error("configure worker authentication", "error", err)
+		os.Exit(1)
+	}
+
 	pool, err := pgxpool.New(startupCtx, cfg.DatabaseURL)
 	if err != nil {
 		log.Error("create database pool", "error", err)
@@ -43,7 +60,7 @@ func main() {
 	handler := ratinghttp.NewHandler(ratingUseCase)
 	server := &http.Server{
 		Addr:              cfg.HTTPAddress,
-		Handler:           ratinghttp.NewRouter(handler),
+		Handler:           ratinghttp.NewRouter(handler, userAuth, workerAuth),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,

@@ -22,7 +22,7 @@
 									"",
 									"    const response = pm.response.json();",
 									"    pm.expect(response.access_token).not.be.empty",
-									"    pm.collectionVariables.set(\"authorizationToken\", response.access_token)",
+									"    pm.variables.set(\"authorizationToken\", response.access_token)",
 									"})"
 								],
 								"type": "text/javascript"
@@ -40,7 +40,7 @@
 							"urlencoded": [
 								{
 									"key": "scope",
-									"value": "openid",
+									"value": "openid profile email",
 									"type": "text"
 								},
 								{
@@ -59,25 +59,26 @@
 									"type": "text"
 								},
 								{
-									"key": "clientId",
+									"key": "client_id",
 									"value": "{{clientId}}",
 									"type": "text"
 								},
 								{
-									"key": "clientSecret",
+									"key": "client_secret",
 									"value": "{{clientSecret}}",
+									"type": "text"
+								},
+								{
+									"key": "audience",
+									"value": "{{audience}}",
 									"type": "text"
 								}
 							]
 						},
 						"url": {
-							"raw": "{{identityProviderUrl}}/oauth/token",
+							"raw": "{{tokenEndpoint}}",
 							"host": [
-								"{{identityProviderUrl}}"
-							],
-							"path": [
-								"oauth",
-								"token"
+								"{{tokenEndpoint}}"
 							]
 						}
 					},
@@ -459,7 +460,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"bookUid\": \"{{bookUid}}\",\n    \"libraryUid\": \"{{libraryUid}}\",\n    \"tillDate\": \"2021-10-11\"\n}"
+							"raw": "{\n    \"bookUid\": \"{{bookUid}}\",\n    \"libraryUid\": \"{{libraryUid}}\",\n    \"tillDate\": \"{{tillDate}}\"\n}"
 						},
 						"url": {
 							"raw": "{{serviceUrl}}/api/v1/reservations",
@@ -492,10 +493,10 @@
 									"    const libraryUid = pm.collectionVariables.get(\"libraryUid\")",
 									"",
 									"    const response = pm.response.json();",
-									"    const request = JSON.parse(pm.request.body.raw)",
+									"    const request = JSON.parse(pm.variables.replaceIn(pm.request.body.raw))",
 									"",
 									"    pm.expect(response.status).to.be.eq(\"RENTED\")",
-									"    pm.expect(response.startDate).to.be.eq(moment().format(\"YYYY-MM-DD\"))",
+									"    pm.expect(response.startDate).to.be.eq(moment.utc().format(\"YYYY-MM-DD\"))",
 									"    pm.expect(response.tillDate).to.be.eq(request.tillDate)",
 									"",
 									"    pm.expect(response.book).to.be.not.undefined",
@@ -537,7 +538,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"bookUid\": \"{{bookUid}}\",\n    \"libraryUid\": \"{{libraryUid}}\",\n    \"tillDate\": \"2021-10-11\"\n}"
+							"raw": "{\n    \"bookUid\": \"{{bookUid}}\",\n    \"libraryUid\": \"{{libraryUid}}\",\n    \"tillDate\": \"{{tillDate}}\"\n}"
 						},
 						"url": {
 							"raw": "{{serviceUrl}}/api/v1/reservations",
@@ -682,7 +683,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"condition\": \"EXCELLENT\",\n    \"date\": \"2021-10-11\"\n}"
+							"raw": "{\n    \"condition\": \"EXCELLENT\",\n    \"date\": \"{{returnDate}}\"\n}"
 						},
 						"url": {
 							"raw": "{{serviceUrl}}/api/v1/reservations/:reservationUid/return",
@@ -742,7 +743,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"condition\": \"EXCELLENT\",\n    \"date\": \"2021-10-11\"\n}"
+							"raw": "{\n    \"condition\": \"EXCELLENT\",\n    \"date\": \"{{returnDate}}\"\n}"
 						},
 						"url": {
 							"raw": "{{serviceUrl}}/api/v1/reservations/:reservationUid/return",
@@ -826,7 +827,16 @@
 						"type": "text/javascript",
 						"exec": [
 							"pm.collectionVariables.set(\"libraryUid\", \"83575e12-7ce0-48ee-9931-51919ff3c9ee\")",
-							"pm.collectionVariables.set(\"bookUid\", \"f7cdc58f-2caf-4b15-9727-f89dcc629b27\")"
+							"pm.collectionVariables.set(\"bookUid\", \"f7cdc58f-2caf-4b15-9727-f89dcc629b27\")",
+							"if (pm.info.requestName === \"[auth] Get Token\") {",
+							"    const moment = require(\"moment\")",
+							"    pm.collectionVariables.set(\"returnDate\", moment.utc().format(\"YYYY-MM-DD\"))",
+							"    pm.collectionVariables.set(\"tillDate\", moment.utc().add(1, \"day\").format(\"YYYY-MM-DD\"))",
+							"    pm.collectionVariables.unset(\"authorizationToken\")",
+						"    pm.variables.unset(\"authorizationToken\")",
+							"    pm.collectionVariables.unset(\"reservationUid\")",
+							"    pm.collectionVariables.unset(\"stars\")",
+							"}"
 						]
 					}
 				},
@@ -865,6 +875,14 @@
 		},
 		{
 			"key": "authorizationToken",
+			"value": ""
+		},
+		{
+			"key": "tillDate",
+			"value": ""
+		},
+		{
+			"key": "returnDate",
 			"value": ""
 		}
 	]

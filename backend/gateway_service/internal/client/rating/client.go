@@ -15,6 +15,7 @@ import (
 	"libriary_system/gateway_service/internal/domain"
 	"libriary_system/gateway_service/internal/usecase"
 	"libriary_system/pkg"
+	"libriary_system/shared/auth"
 )
 
 const maxResponseBodySize = 1 << 20
@@ -25,6 +26,7 @@ type Client struct {
 	baseURL    *url.URL
 	httpClient *http.Client
 	breaker    *pkg.CircuitBreaker
+	internal   bool
 }
 
 type serviceError struct {
@@ -57,7 +59,20 @@ func NewClient(rawBaseURL string, httpClient *http.Client, breaker *pkg.CircuitB
 	if breaker == nil {
 		breaker = pkg.NewCircuitBreaker(pkg.CircuitBreakerConfig{})
 	}
-	return &Client{baseURL: baseURL, httpClient: httpClient, breaker: breaker}, nil
+	return &Client{baseURL: baseURL, httpClient: auth.NewHTTPClient(httpClient, auth.RequestTokenSource{}), breaker: breaker}, nil
+}
+
+func NewWorkerClient(rawBaseURL string, httpClient *http.Client, breaker *pkg.CircuitBreaker, tokens auth.TokenSource) (*Client, error) {
+	if tokens == nil {
+		return nil, fmt.Errorf("worker rating client requires a token source")
+	}
+	client, err := NewClient(rawBaseURL, httpClient, breaker)
+	if err != nil {
+		return nil, err
+	}
+	client.httpClient = auth.NewHTTPClient(httpClient, tokens)
+	client.internal = true
+	return client, nil
 }
 
 func (client *Client) GetByUsername(ctx context.Context, username string) (domain.Rating, error) {
@@ -85,7 +100,14 @@ func (client *Client) Create(ctx context.Context, rating domain.Rating) error {
 
 func (client *Client) AddStars(ctx context.Context, username string, delta int) (domain.Rating, error) {
 	var response ratingResponse
-	if err := client.do(ctx, http.MethodPatch, username, addStarsRequest{Delta: delta}, http.StatusOK, &response); err != nil {
+	var body any = addStarsRequest{Delta: delta}
+	if client.internal {
+		body = struct {
+			Username string `json:"username"`
+			Delta    int    `json:"delta"`
+		}{Username: username, Delta: delta}
+	}
+	if err := client.do(ctx, http.MethodPatch, username, body, http.StatusOK, &response); err != nil {
 		return domain.Rating{}, mapError(err)
 	}
 	return domain.Rating{Username: username, StarsCount: response.Stars}, nil
@@ -100,6 +122,9 @@ func (client *Client) do(
 ) error {
 	endpoint := *client.baseURL
 	endpoint.Path = strings.TrimRight(endpoint.Path, "/") + "/api/v1/rating"
+	if client.internal {
+		endpoint.Path = strings.TrimRight(client.baseURL.Path, "/") + "/internal/v1/rating"
+	}
 	endpoint.RawQuery = ""
 	endpoint.Fragment = ""
 
@@ -115,7 +140,6 @@ func (client *Client) do(
 	if err != nil {
 		return fmt.Errorf("create rating request: %w", err)
 	}
-	request.Header.Set("X-User-Name", username)
 	request.Header.Set("Accept", "application/json")
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")

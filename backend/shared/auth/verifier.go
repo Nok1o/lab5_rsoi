@@ -47,10 +47,11 @@ func (p Principal) HasScope(scope string) bool { return slices.Contains(p.Scopes
 // goroutine or Close method is needed. An expired cache fails closed if refresh
 // fails; an unavailable provider does not invalidate still-fresh cached keys.
 type Verifier struct {
-	cfg     Config
-	client  *http.Client
-	jwksURL string
-	now     func() time.Time
+	cfg      Config
+	client   *http.Client
+	jwksURL  string
+	tokenURL string
+	now      func() time.Time
 
 	mu          sync.RWMutex
 	keys        map[string]*rsa.PublicKey
@@ -80,8 +81,9 @@ func NewVerifier(ctx context.Context, cfg Config, client *http.Client) (*Verifie
 		return nil, fmt.Errorf("discover OIDC provider: %w", err)
 	}
 	var metadata struct {
-		Issuer  string `json:"issuer"`
-		JWKSURI string `json:"jwks_uri"`
+		Issuer        string `json:"issuer"`
+		JWKSURI       string `json:"jwks_uri"`
+		TokenEndpoint string `json:"token_endpoint"`
 	}
 	if err := json.Unmarshal(data, &metadata); err != nil || metadata.Issuer != cfg.Issuer {
 		return nil, fmt.Errorf("OIDC discovery must return the configured issuer")
@@ -92,6 +94,13 @@ func NewVerifier(ctx context.Context, cfg Config, client *http.Client) (*Verifie
 		return nil, fmt.Errorf("OIDC jwks_uri must use HTTPS and the configured issuer's host")
 	}
 	v.jwksURL = keysURL.String()
+	if metadata.TokenEndpoint != "" {
+		tokenURL, err := httpsURL(metadata.TokenEndpoint)
+		if err != nil || !strings.EqualFold(tokenURL.Host, issuerURL.Host) {
+			return nil, fmt.Errorf("OIDC token_endpoint must use HTTPS and the configured issuer's host")
+		}
+		v.tokenURL = tokenURL.String()
+	}
 	keys, err := v.fetchKeys(ctx)
 	if err != nil {
 		return nil, err

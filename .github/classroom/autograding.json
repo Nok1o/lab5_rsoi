@@ -2,12 +2,12 @@
   "tests": [
     {
       "name": "Run Postman",
-      "setup": "",
-      "run": "newman run -e v4/postman/environment.json v4/postman/collection.json",
+      "setup": "npm ci --prefix scripts --ignore-scripts --no-audit --no-fund",
+      "run": "bash scripts/test-script.sh v4",
       "input": "",
       "output": "",
       "comparison": "included",
-      "timeout": 10,
+      "timeout": 180,
       "points": 10
     }
   ]

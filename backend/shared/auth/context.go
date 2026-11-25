@@ -7,6 +7,13 @@ import (
 
 type authenticationKey struct{}
 
+// SubjectFromContext is for delivery handlers behind Authenticate. No legacy
+// header or request field is used as a fallback when identity is absent.
+func SubjectFromContext(ctx context.Context) string {
+	value, _ := ctx.Value(authenticationKey{}).(authentication)
+	return value.principal.Subject
+}
+
 // The raw token lives only in the synchronous request context, not in Principal,
 // domain models or queued jobs. HTTP clients can forward it at the next step.
 type authentication struct {

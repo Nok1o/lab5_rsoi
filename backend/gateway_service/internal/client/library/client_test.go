@@ -1,8 +1,8 @@
 package library
 
 import (
-	"context"
 	"errors"
+	"libriary_system/internal/testauth"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -42,7 +42,7 @@ func TestClientListLibrariesByCity(t *testing.T) {
 	}
 
 	page, err := client.ListLibrariesByCity(
-		context.Background(),
+		testauth.Context(t, "alice"),
 		"Москва",
 		pagination.PageToken{Limit: 10, Offset: 20},
 	)
@@ -74,7 +74,7 @@ func TestClientMapsLibraryErrors(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, err = client.ReserveBook(context.Background(), uuid.New(), uuid.New())
+			_, err = client.ReserveBook(testauth.Context(t, "alice"), uuid.New(), uuid.New())
 			if check.want != nil && !errors.Is(err, check.want) {
 				t.Fatalf("error = %v, want %v", err, check.want)
 			}

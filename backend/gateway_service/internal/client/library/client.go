@@ -18,6 +18,7 @@ import (
 	"libriary_system/gateway_service/internal/domain"
 	"libriary_system/gateway_service/internal/usecase"
 	"libriary_system/pkg"
+	"libriary_system/shared/auth"
 	"libriary_system/shared/pagination"
 )
 
@@ -29,6 +30,7 @@ type Client struct {
 	baseURL    *url.URL
 	httpClient *http.Client
 	breaker    *pkg.CircuitBreaker
+	apiPrefix  string
 }
 
 type serviceError struct {
@@ -61,7 +63,20 @@ func NewClient(rawBaseURL string, httpClient *http.Client, breaker *pkg.CircuitB
 	if breaker == nil {
 		breaker = pkg.NewCircuitBreaker(pkg.CircuitBreakerConfig{})
 	}
-	return &Client{baseURL: baseURL, httpClient: httpClient, breaker: breaker}, nil
+	return &Client{baseURL: baseURL, httpClient: auth.NewHTTPClient(httpClient, auth.RequestTokenSource{}), breaker: breaker, apiPrefix: "/api/v1"}, nil
+}
+
+func NewWorkerClient(rawBaseURL string, httpClient *http.Client, breaker *pkg.CircuitBreaker, tokens auth.TokenSource) (*Client, error) {
+	if tokens == nil {
+		return nil, fmt.Errorf("worker library client requires a token source")
+	}
+	client, err := NewClient(rawBaseURL, httpClient, breaker)
+	if err != nil {
+		return nil, err
+	}
+	client.httpClient = auth.NewHTTPClient(httpClient, tokens)
+	client.apiPrefix = "/internal/v1"
+	return client, nil
 }
 
 func (client *Client) ListLibrariesByCity(
@@ -194,7 +209,7 @@ func (client *Client) bookEndpoint(libraryUID, bookUID uuid.UUID) *url.URL {
 
 func (client *Client) endpoint(path string) *url.URL {
 	endpoint := *client.baseURL
-	endpoint.Path = strings.TrimRight(endpoint.Path, "/") + path
+	endpoint.Path = strings.TrimRight(endpoint.Path, "/") + client.apiPrefix + strings.TrimPrefix(path, "/api/v1")
 	endpoint.RawQuery = ""
 	endpoint.Fragment = ""
 	return &endpoint

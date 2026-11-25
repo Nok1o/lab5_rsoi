@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"libriary_system/internal/testauth"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -105,8 +106,8 @@ func TestUnavailableDependencyReturns503(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			stub := &stubGateway{t: t, ratingErr: test.err}
-			router := gatewayhttp.NewRouter(gatewayhttp.NewHandler(stub))
-			request := httptest.NewRequest(http.MethodGet, "/api/v1/rating", nil)
+			router := gatewayhttp.NewRouter(gatewayhttp.NewHandler(stub), testauth.User(t))
+			request := testauth.NewRequest(http.MethodGet, "/api/v1/rating", nil)
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, request)
 			if response.Code != http.StatusServiceUnavailable {
@@ -127,10 +128,10 @@ func TestUnavailableDependencyReturns503(t *testing.T) {
 
 func TestGatewayRoutes(t *testing.T) {
 	stub := &stubGateway{t: t, libraryUID: uuid.New(), bookUID: uuid.New(), reservationUID: uuid.New()}
-	router := gatewayhttp.NewRouter(gatewayhttp.NewHandler(stub))
+	router := gatewayhttp.NewRouter(gatewayhttp.NewHandler(stub), testauth.User(t))
 	call := func(method, path, username, body string) *httptest.ResponseRecorder {
-		request := httptest.NewRequest(method, path, strings.NewReader(body))
-		request.Header.Set("X-User-Name", username)
+		request := testauth.NewRequest(method, path, strings.NewReader(body))
+		testauth.Login(request, username)
 		response := httptest.NewRecorder()
 		router.ServeHTTP(response, request)
 		return response
@@ -142,7 +143,7 @@ func TestGatewayRoutes(t *testing.T) {
 		}
 	}
 	checkStatus(call(http.MethodGet, "/manage/health", "", ""), http.StatusOK)
-	libraries := call(http.MethodGet, "/api/v1/libraries?city=Москва&page=2&size=25", "", "")
+	libraries := call(http.MethodGet, "/api/v1/libraries?city=Москва&page=2&size=25", "alice", "")
 	checkStatus(libraries, http.StatusOK)
 	var page struct {
 		Page     int   `json:"page"`
@@ -152,7 +153,7 @@ func TestGatewayRoutes(t *testing.T) {
 	if err := json.Unmarshal(libraries.Body.Bytes(), &page); err != nil || page.Page != 2 || page.PageSize != 1 || page.Total != 50 {
 		t.Fatalf("library page = %+v, error = %v", page, err)
 	}
-	books := call(http.MethodGet, "/api/v1/libraries/"+stub.libraryUID.String()+"/books?page=1&size=10&showAll=true", "", "")
+	books := call(http.MethodGet, "/api/v1/libraries/"+stub.libraryUID.String()+"/books?page=1&size=10&showAll=true", "alice", "")
 	checkStatus(books, http.StatusOK)
 	if !strings.Contains(books.Body.String(), `"condition":"EXCELLENT"`) {
 		t.Fatalf("books=%s", books.Body.String())
@@ -178,7 +179,7 @@ func TestGatewayRoutes(t *testing.T) {
 
 func TestGatewayRejectsInvalidRequest(t *testing.T) {
 	stub := &stubGateway{t: t, libraryUID: uuid.New(), bookUID: uuid.New(), reservationUID: uuid.New()}
-	router := gatewayhttp.NewRouter(gatewayhttp.NewHandler(stub))
+	router := gatewayhttp.NewRouter(gatewayhttp.NewHandler(stub), testauth.User(t))
 	for _, check := range []struct{ method, path, body string }{
 		{http.MethodGet, "/api/v1/libraries?city=Москва&page=no", ""},
 		{http.MethodGet, "/api/v1/libraries?city=Москва&size=101", ""},
@@ -187,7 +188,7 @@ func TestGatewayRejectsInvalidRequest(t *testing.T) {
 		{http.MethodPost, "/api/v1/reservations", `{"bookUid":"bad"}`},
 		{http.MethodPost, "/api/v1/reservations/" + stub.reservationUID.String() + "/return", `{"condition":"BAD","date":"bad"}`},
 	} {
-		request := httptest.NewRequest(check.method, check.path, strings.NewReader(check.body))
+		request := testauth.NewRequest(check.method, check.path, strings.NewReader(check.body))
 		response := httptest.NewRecorder()
 		router.ServeHTTP(response, request)
 		if response.Code != http.StatusBadRequest {

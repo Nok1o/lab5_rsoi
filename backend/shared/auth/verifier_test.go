@@ -26,14 +26,15 @@ import (
 // The fixture is a real HTTPS discovery/JWKS server, not an Auth0 tenant.
 // Keys and signed access tokens are generated locally and never logged.
 type providerFixture struct {
-	server    *httptest.Server
-	private   *rsa.PrivateKey
-	mu        sync.RWMutex
-	document  map[string]string
-	keys      []byte
-	status    int
-	requests  atomic.Int32
-	discovery atomic.Int32
+	server       *httptest.Server
+	private      *rsa.PrivateKey
+	mu           sync.RWMutex
+	document     map[string]string
+	keys         []byte
+	status       int
+	requests     atomic.Int32
+	discovery    atomic.Int32
+	tokenHandler http.HandlerFunc
 }
 
 func newProvider(t *testing.T) *providerFixture {
@@ -56,11 +57,17 @@ func newProvider(t *testing.T) *providerFixture {
 			f.requests.Add(1)
 			w.WriteHeader(f.status)
 			_, _ = w.Write(f.keys)
+		case "/oauth/token":
+			if f.tokenHandler == nil {
+				w.WriteHeader(http.StatusNotImplemented)
+				return
+			}
+			f.tokenHandler(w, r)
 		default:
 			http.NotFound(w, r)
 		}
 	}))
-	f.document = map[string]string{"issuer": f.server.URL + "/", "jwks_uri": f.server.URL + "/keys"}
+	f.document = map[string]string{"issuer": f.server.URL + "/", "jwks_uri": f.server.URL + "/keys", "token_endpoint": f.server.URL + "/oauth/token"}
 	t.Cleanup(f.server.Close)
 	return f
 }
@@ -306,6 +313,8 @@ func TestDiscoveryAndJWKSRejectUnsafeResponses(t *testing.T) {
 			f.document["jwks_uri"] = strings.Replace(f.server.URL, "https:", "http:", 1) + "/keys"
 		}},
 		{"foreign JWKS host", func(f *providerFixture) { f.document["jwks_uri"] = "https://wrong.example/keys" }},
+		{"insecure token endpoint", func(f *providerFixture) { f.document["token_endpoint"] = "http://wrong.example/token" }},
+		{"foreign token endpoint", func(f *providerFixture) { f.document["token_endpoint"] = "https://wrong.example/token" }},
 		{"malformed JWKS", func(f *providerFixture) { f.keys = []byte("not-json") }},
 		{"empty JWKS", func(f *providerFixture) { f.keys = []byte(`{"keys":[]}`) }},
 		{"oversized JWKS", func(f *providerFixture) { f.keys = []byte(strings.Repeat("x", maxResponseSize+1)) }},

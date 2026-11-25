@@ -9,6 +9,7 @@ import (
 
 	"libriary_system/rating_service/internal/domain"
 	"libriary_system/rating_service/internal/usecase"
+	"libriary_system/shared/auth"
 	"libriary_system/shared/log"
 	"libriary_system/shared/username"
 )
@@ -31,7 +32,7 @@ func NewHandler(ratings RatingUseCase) *Handler {
 }
 
 func (handler *Handler) GetRating(w stdhttp.ResponseWriter, request *stdhttp.Request) {
-	rating, err := handler.ratings.GetByUsername(request.Context(), request.Header.Get("X-User-Name"))
+	rating, err := handler.ratings.GetByUsername(request.Context(), auth.SubjectFromContext(request.Context()))
 	if err != nil {
 		handler.writeError(w, err)
 		return
@@ -45,7 +46,7 @@ func (handler *Handler) CreateRating(w stdhttp.ResponseWriter, request *stdhttp.
 		writeJSON(w, stdhttp.StatusBadRequest, errorResponse{Message: "request body must contain stars"})
 		return
 	}
-	rating := domain.Rating{Username: request.Header.Get("X-User-Name"), StarsCount: *body.Stars}
+	rating := domain.Rating{Username: auth.SubjectFromContext(request.Context()), StarsCount: *body.Stars}
 	if err := handler.ratings.Create(request.Context(), rating); err != nil {
 		handler.writeError(w, err)
 		return
@@ -60,7 +61,7 @@ func (handler *Handler) UpdateRating(w stdhttp.ResponseWriter, request *stdhttp.
 		return
 	}
 	rating, err := handler.ratings.UpdateRating(request.Context(), domain.Rating{
-		Username: request.Header.Get("X-User-Name"), StarsCount: *body.Stars,
+		Username: auth.SubjectFromContext(request.Context()), StarsCount: *body.Stars,
 	})
 	if err != nil {
 		handler.writeError(w, err)
@@ -75,7 +76,7 @@ func (handler *Handler) AddStars(w stdhttp.ResponseWriter, request *stdhttp.Requ
 		writeJSON(w, stdhttp.StatusBadRequest, errorResponse{Message: "request body must contain delta"})
 		return
 	}
-	rating, err := handler.ratings.AddStars(request.Context(), request.Header.Get("X-User-Name"), *body.Delta)
+	rating, err := handler.ratings.AddStars(request.Context(), auth.SubjectFromContext(request.Context()), *body.Delta)
 	if err != nil {
 		handler.writeError(w, err)
 		return
@@ -95,6 +96,20 @@ func (handler *Handler) writeError(w stdhttp.ResponseWriter, err error) {
 		log.Error("rating request failed", "error", err)
 		writeJSON(w, stdhttp.StatusInternalServerError, errorResponse{Message: "internal server error"})
 	}
+}
+
+func (handler *Handler) AddStarsForUser(w stdhttp.ResponseWriter, request *stdhttp.Request) {
+	var body internalAddStarsRequest
+	if err := decodeJSON(w, request, &body); err != nil || body.Delta == nil {
+		writeJSON(w, stdhttp.StatusBadRequest, errorResponse{Message: "request body must contain username and delta"})
+		return
+	}
+	rating, err := handler.ratings.AddStars(request.Context(), body.Username, *body.Delta)
+	if err != nil {
+		handler.writeError(w, err)
+		return
+	}
+	writeJSON(w, stdhttp.StatusOK, toRatingResponse(rating))
 }
 
 func decodeJSON(w stdhttp.ResponseWriter, request *stdhttp.Request, target any) error {

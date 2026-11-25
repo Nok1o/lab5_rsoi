@@ -4,16 +4,19 @@ import (
 	stdhttp "net/http"
 
 	"github.com/gorilla/mux"
+	"libriary_system/shared/auth"
 )
 
-func NewRouter(handler *Handler) stdhttp.Handler {
+func NewRouter(handler *Handler, userAuth *auth.Middleware) stdhttp.Handler {
 	router := mux.NewRouter()
-	router.HandleFunc("/api/v1/reservations", handler.ListReservations).Methods(stdhttp.MethodGet)
-	router.HandleFunc("/api/v1/reservations", handler.Rent).Methods(stdhttp.MethodPost)
-	router.HandleFunc("/api/v1/reservations/count", handler.CountReservations).Methods(stdhttp.MethodGet)
-	router.HandleFunc("/api/v1/reservations/{reservationUid}", handler.GetReservation).Methods(stdhttp.MethodGet)
-	router.HandleFunc("/api/v1/reservations/{reservationUid}", handler.Cancel).Methods(stdhttp.MethodDelete)
-	router.HandleFunc("/api/v1/reservations/{reservationUid}/return", handler.Return).Methods(stdhttp.MethodPost)
+	api := router.PathPrefix("/api/v1").Subrouter()
+	api.Use(userAuth.Authenticate)
+	api.HandleFunc("/reservations", handler.ListReservations).Methods(stdhttp.MethodGet)
+	api.HandleFunc("/reservations", handler.Rent).Methods(stdhttp.MethodPost)
+	api.HandleFunc("/reservations/count", handler.CountReservations).Methods(stdhttp.MethodGet)
+	api.HandleFunc("/reservations/{reservationUid}", handler.GetReservation).Methods(stdhttp.MethodGet)
+	api.HandleFunc("/reservations/{reservationUid}", handler.Cancel).Methods(stdhttp.MethodDelete)
+	api.HandleFunc("/reservations/{reservationUid}/return", handler.Return).Methods(stdhttp.MethodPost)
 	router.HandleFunc("/manage/health", func(w stdhttp.ResponseWriter, _ *stdhttp.Request) {
 		writeJSON(w, stdhttp.StatusOK, map[string]string{"status": "ok"})
 	}).Methods(stdhttp.MethodGet)

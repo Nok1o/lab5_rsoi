@@ -37,6 +37,9 @@ func NewMiddleware(verifier TokenVerifier, audience string) (*Middleware, error)
 // callback routes must be registered outside the protected router; this layer
 // has no path-prefix bypasses. Only Authorization: Bearer is accepted.
 func (m *Middleware) Authenticate(next http.Handler) http.Handler {
+	if m == nil || m.verifier == nil {
+		panic("authentication middleware is not configured")
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		values := r.Header.Values("Authorization")
 		if len(values) == 0 {
@@ -68,6 +71,23 @@ func (m *Middleware) Authenticate(next http.Handler) http.Handler {
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(authenticatedContext(r.Context(), principal, token)))
+	})
+}
+
+// RequireClientCredentials restricts internal routes to Auth0 M2M identities.
+// It supplements audience/scopes rather than trusting an arbitrary target user.
+func RequireClientCredentials(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := PrincipalFromContext(r.Context())
+		if !ok {
+			writeAuthError(w, http.StatusUnauthorized, "authentication required", "Bearer")
+			return
+		}
+		if principal.ClientID == "" || principal.Subject != principal.ClientID+"@clients" {
+			writeAuthError(w, http.StatusForbidden, "service identity required", "")
+			return
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 

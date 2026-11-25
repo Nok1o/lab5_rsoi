@@ -3,6 +3,7 @@ package http_test
 import (
 	"context"
 	"errors"
+	"libriary_system/internal/testauth"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -60,7 +61,7 @@ func (repo *memoryRepo) AddStars(_ context.Context, username string, delta, minS
 func TestRatingRouter(t *testing.T) {
 	repo := &memoryRepo{ratings: make(map[string]domain.Rating)}
 	handler := ratinghttp.NewHandler(usecase.NewRatingUseCase(repo))
-	router := ratinghttp.NewRouter(handler)
+	router := ratinghttp.NewRouter(handler, testauth.User(t), testauth.Worker(t))
 
 	checks := []struct {
 		method, path, username, body string
@@ -78,11 +79,11 @@ func TestRatingRouter(t *testing.T) {
 		{http.MethodPost, "/api/v1/rating", "bob", `{"stars":0}`, http.StatusBadRequest, "invalid stars count"},
 		{http.MethodPost, "/api/v1/rating", "bob", `{"stars":20,"extra":1}`, http.StatusBadRequest, "request body"},
 		{http.MethodPatch, "/api/v1/rating", "bob", `{}`, http.StatusBadRequest, "delta"},
-		{http.MethodGet, "/api/v1/rating", "", "", http.StatusBadRequest, "invalid username"},
+		{http.MethodGet, "/api/v1/rating", "", "", http.StatusUnauthorized, "authentication required"},
 	}
 	for _, check := range checks {
-		request := httptest.NewRequest(check.method, check.path, strings.NewReader(check.body))
-		request.Header.Set("X-User-Name", check.username)
+		request := testauth.NewRequest(check.method, check.path, strings.NewReader(check.body))
+		testauth.Login(request, check.username)
 		response := httptest.NewRecorder()
 		router.ServeHTTP(response, request)
 		if response.Code != check.status || !strings.Contains(response.Body.String(), check.contains) {

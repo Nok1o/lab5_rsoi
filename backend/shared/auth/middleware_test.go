@@ -250,6 +250,29 @@ func TestMiddlewareConfigurationAndContextIsolation(t *testing.T) {
 	}
 }
 
+func TestClientCredentialsPolicyRequiresVerifiedServiceIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		principal *Principal
+		status    int
+	}{
+		{nil, http.StatusUnauthorized},
+		{&Principal{Subject: "auth0|alice", ClientID: "user-client"}, http.StatusForbidden},
+		{&Principal{Subject: "worker@clients"}, http.StatusForbidden},
+		{&Principal{Subject: "worker@clients", ClientID: "another-client"}, http.StatusForbidden},
+		{&Principal{Subject: "worker@clients", ClientID: "worker"}, http.StatusNoContent},
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/internal/v1/rating", nil)
+		if tc.principal != nil {
+			req = req.WithContext(authenticatedContext(req.Context(), *tc.principal, "test-token"))
+		}
+		result := httptest.NewRecorder()
+		RequireClientCredentials(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })).ServeHTTP(result, req)
+		if result.Code != tc.status {
+			t.Fatalf("service identity policy: status=%d want=%d", result.Code, tc.status)
+		}
+	}
+}
+
 func TestMiddlewareWithRealJWTAndExplicitPublicRoutes(t *testing.T) {
 	f := newProvider(t)
 	v := f.verifier(t)

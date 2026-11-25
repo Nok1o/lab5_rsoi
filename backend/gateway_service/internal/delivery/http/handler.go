@@ -11,6 +11,7 @@ import (
 
 	"libriary_system/gateway_service/internal/domain"
 	"libriary_system/gateway_service/internal/usecase"
+	"libriary_system/shared/auth"
 	"libriary_system/shared/log"
 	"libriary_system/shared/pagination"
 )
@@ -67,7 +68,7 @@ func (handler *Handler) ListBooksByLibrary(w stdhttp.ResponseWriter, request *st
 }
 
 func (handler *Handler) GetRating(w stdhttp.ResponseWriter, request *stdhttp.Request) {
-	rating, err := handler.gateway.GetRating(request.Context(), request.Header.Get("X-User-Name"))
+	rating, err := handler.gateway.GetRating(request.Context(), auth.SubjectFromContext(request.Context()))
 	if err != nil {
 		handler.writeError(w, err)
 		return
@@ -76,7 +77,7 @@ func (handler *Handler) GetRating(w stdhttp.ResponseWriter, request *stdhttp.Req
 }
 
 func (handler *Handler) ListReservations(w stdhttp.ResponseWriter, request *stdhttp.Request) {
-	details, err := handler.gateway.ListReservations(request.Context(), request.Header.Get("X-User-Name"))
+	details, err := handler.gateway.ListReservations(request.Context(), auth.SubjectFromContext(request.Context()))
 	if err != nil {
 		handler.writeError(w, err)
 		return
@@ -99,7 +100,7 @@ func (handler *Handler) TakeBook(w stdhttp.ResponseWriter, request *stdhttp.Requ
 		validationResponse(map[string]string{"tillDate": "must be YYYY-MM-DD"}).writeResponse(w, stdhttp.StatusBadRequest)
 		return
 	}
-	details, err := handler.gateway.Rent(request.Context(), request.Header.Get("X-User-Name"), body.LibraryUID, body.BookUID, tillDate)
+	details, err := handler.gateway.Rent(request.Context(), auth.SubjectFromContext(request.Context()), body.LibraryUID, body.BookUID, tillDate)
 	if err != nil {
 		handler.writeError(w, err)
 		return
@@ -122,7 +123,7 @@ func (handler *Handler) ReturnBook(w stdhttp.ResponseWriter, request *stdhttp.Re
 		validationResponse(map[string]string{"date": "must be YYYY-MM-DD"}).writeResponse(w, stdhttp.StatusBadRequest)
 		return
 	}
-	if err := handler.gateway.Return(request.Context(), reservationUID, request.Header.Get("X-User-Name"), body.Condition, returnDate); err != nil {
+	if err := handler.gateway.Return(request.Context(), reservationUID, auth.SubjectFromContext(request.Context()), body.Condition, returnDate); err != nil {
 		handler.writeError(w, err)
 		return
 	}
@@ -130,6 +131,20 @@ func (handler *Handler) ReturnBook(w stdhttp.ResponseWriter, request *stdhttp.Re
 }
 
 func (handler *Handler) writeError(w stdhttp.ResponseWriter, err error) {
+	var upstreamStatus interface{ StatusCode() int }
+	if errors.As(err, &upstreamStatus) {
+		switch upstreamStatus.StatusCode() {
+		case stdhttp.StatusUnauthorized:
+			w.Header().Set("Cache-Control", "no-store")
+			w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
+			newErrorResponse().message("invalid access token").writeResponse(w, stdhttp.StatusUnauthorized)
+			return
+		case stdhttp.StatusForbidden:
+			w.Header().Set("Cache-Control", "no-store")
+			newErrorResponse().message("insufficient permissions").writeResponse(w, stdhttp.StatusForbidden)
+			return
+		}
+	}
 	if validationErr, ok := errors.AsType[*usecase.ValidationError](err); ok {
 		validationResponse(validationErr.Fields).writeResponse(w, stdhttp.StatusBadRequest)
 		return

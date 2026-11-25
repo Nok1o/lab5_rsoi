@@ -1,9 +1,9 @@
 package rating
 
 import (
-	"context"
 	"errors"
 	"io"
+	"libriary_system/internal/testauth"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -38,8 +38,8 @@ func TestClient(t *testing.T) {
 	} {
 		t.Run(check.method+"/"+http.StatusText(check.responseCode), func(t *testing.T) {
 			transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
-				if request.Method != check.method || request.URL.Path != "/api/v1/rating" || request.Header.Get("X-User-Name") != "alice" {
-					t.Errorf("unexpected request: %s %s %s", request.Method, request.URL.Path, request.Header.Get("X-User-Name"))
+				if request.Method != check.method || request.URL.Path != "/api/v1/rating" || request.Header.Get("Authorization") != "Bearer user:alice" {
+					t.Errorf("unexpected request: %s %s %s", request.Method, request.URL.Path, request.Header.Get("Authorization"))
 				}
 				return &http.Response{
 					StatusCode: check.responseCode,
@@ -51,7 +51,7 @@ func TestClient(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			ctx := context.Background()
+			ctx := testauth.Context(t, "alice")
 			var actualErr error
 			switch check.method {
 			case http.MethodGet:
@@ -110,13 +110,13 @@ func TestCircuitBreakerProtectsReadsButNotWrites(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, _ = client.GetByUsername(context.Background(), "alice")
-	_, _ = client.GetByUsername(context.Background(), "alice")
+	_, _ = client.GetByUsername(testauth.Context(t, "alice"), "alice")
+	_, _ = client.GetByUsername(testauth.Context(t, "alice"), "alice")
 	if got := calls.Load(); got != 1 {
 		t.Fatalf("read transport calls = %d, want 1", got)
 	}
 
-	rating, err := client.AddStars(context.Background(), "alice", 1)
+	rating, err := client.AddStars(testauth.Context(t, "alice"), "alice", 1)
 	if err != nil {
 		t.Fatalf("AddStars() error = %v", err)
 	}
@@ -155,10 +155,10 @@ func TestClientErrorDoesNotOpenCircuitBreaker(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := client.GetByUsername(context.Background(), "alice"); !errors.Is(err, domain.ErrRatingNotFound) {
+	if _, err := client.GetByUsername(testauth.Context(t, "alice"), "alice"); !errors.Is(err, domain.ErrRatingNotFound) {
 		t.Fatalf("first GetByUsername() error = %v", err)
 	}
-	rating, err := client.GetByUsername(context.Background(), "alice")
+	rating, err := client.GetByUsername(testauth.Context(t, "alice"), "alice")
 	if err != nil {
 		t.Fatalf("second GetByUsername() error = %v", err)
 	}

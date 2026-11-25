@@ -15,6 +15,7 @@ import (
 	libraryhttp "libriary_system/library_service/internal/delivery/http"
 	"libriary_system/library_service/internal/repository/postgres"
 	"libriary_system/library_service/internal/usecase"
+	"libriary_system/shared/auth"
 	"libriary_system/shared/log"
 )
 
@@ -27,6 +28,22 @@ func main() {
 
 	startupCtx, cancelStartup := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancelStartup()
+
+	verifier, err := auth.NewVerifier(startupCtx, cfg.OIDC, nil)
+	if err != nil {
+		log.Error("initialize OIDC verifier", "error", err)
+		os.Exit(1)
+	}
+	userAuth, err := auth.NewMiddleware(verifier, cfg.OIDC.Audience)
+	if err != nil {
+		log.Error("configure user authentication", "error", err)
+		os.Exit(1)
+	}
+	workerAuth, err := auth.NewMiddleware(verifier, cfg.OIDC.InternalAudience)
+	if err != nil {
+		log.Error("configure worker authentication", "error", err)
+		os.Exit(1)
+	}
 
 	pool, err := pgxpool.New(startupCtx, cfg.DatabaseURL)
 	if err != nil {
@@ -45,7 +62,7 @@ func main() {
 	handler := libraryhttp.NewHandler(libraryUseCase)
 	server := &http.Server{
 		Addr:              cfg.HTTPAddress,
-		Handler:           libraryhttp.NewRouter(handler),
+		Handler:           libraryhttp.NewRouter(handler, userAuth, workerAuth),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,

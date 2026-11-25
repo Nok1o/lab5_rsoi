@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"libriary_system/internal/testauth"
 	stdhttp "net/http"
 	"net/http/httptest"
 	"testing"
@@ -39,13 +40,13 @@ func TestListLibraries(t *testing.T) {
 		},
 	}
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(
+	request := testauth.NewRequest(
 		stdhttp.MethodGet,
 		"/api/v1/libraries?city=Москва&limit=25&offset=50",
 		nil,
 	)
 
-	NewRouter(NewHandler(stub)).ServeHTTP(recorder, request)
+	NewRouter(NewHandler(stub), testauth.User(t), testauth.Worker(t)).ServeHTTP(recorder, request)
 
 	if recorder.Code != stdhttp.StatusOK {
 		t.Fatalf("status = %d, want %d", recorder.Code, stdhttp.StatusOK)
@@ -61,9 +62,9 @@ func TestListLibraries(t *testing.T) {
 
 func TestHealth(t *testing.T) {
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(stdhttp.MethodGet, "/manage/health", nil)
+	request := testauth.NewRequest(stdhttp.MethodGet, "/manage/health", nil)
 
-	NewRouter(NewHandler(&libraryUseCaseStub{})).ServeHTTP(recorder, request)
+	NewRouter(NewHandler(&libraryUseCaseStub{}), testauth.User(t), testauth.Worker(t)).ServeHTTP(recorder, request)
 
 	if recorder.Code != stdhttp.StatusOK {
 		t.Fatalf("status = %d, want %d", recorder.Code, stdhttp.StatusOK)

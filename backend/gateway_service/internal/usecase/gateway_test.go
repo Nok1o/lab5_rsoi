@@ -141,6 +141,35 @@ type fakeReturnQueue struct {
 	err  error
 }
 
+type testHTTPStatus int
+
+func (s testHTTPStatus) Error() string   { return "downstream credentials rejected" }
+func (s testHTTPStatus) StatusCode() int { return int(s) }
+
+func TestAcceptedReturnDefersExpiredCredentialsButNotForbiddenOperations(t *testing.T) {
+	for _, status := range []int{401, 403} {
+		gateway, library, _, _, queue := newTestGatewayWithQueue()
+		date := time.Date(2026, 11, 22, 0, 0, 0, 0, time.UTC)
+		rental, err := gateway.Rent(context.Background(), "alice", library.library.Id, library.book.Id, date)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cause := &DependencyError{Service: "library", Cause: testHTTPStatus(status)}
+		library.getBookErr = cause
+		err = gateway.Return(context.Background(), rental.Reservation.Id, "alice", domain.ConditionExcellent, date)
+		if status == 401 {
+			if err != nil || len(queue.jobs) != 1 || queue.jobs[0].Username != "alice" {
+				t.Fatal("accepted return was abandoned after credentials expired")
+			}
+		} else if !errors.Is(err, cause) || len(queue.jobs) != 0 {
+			t.Fatal("forbidden operation was escalated to worker")
+		}
+		if IsRetryable(cause) {
+			t.Fatal("regular unauthorized requests must not become retryable")
+		}
+	}
+}
+
 func (queue *fakeReturnQueue) Enqueue(_ context.Context, job ReturnJob) error {
 	if queue.err != nil {
 		return queue.err

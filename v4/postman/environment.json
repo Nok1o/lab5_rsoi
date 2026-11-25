@@ -1,6 +1,6 @@
 {
   "id": "acc90f86-88ad-444e-924e-6f48f6ee7711",
-  "name": "[rsoi][lab5] Flight Service",
+  "name": "[rsoi][lab5][v4] Library System",
   "values": [
     {
       "key": "serviceUrl",
@@ -30,6 +30,16 @@
     {
       "key": "clientSecret",
       "value": "",
+      "enabled": true
+    },
+    {
+      "key": "audience",
+      "value": "https://library-system",
+      "enabled": true
+    },
+    {
+      "key": "tokenEndpoint",
+      "value": "{{identityProviderUrl}}/oauth/token",
       "enabled": true
     }
   ],

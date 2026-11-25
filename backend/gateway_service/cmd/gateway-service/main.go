@@ -19,6 +19,7 @@ import (
 	returnqueue "libriary_system/gateway_service/internal/queue"
 	"libriary_system/gateway_service/internal/usecase"
 	"libriary_system/pkg"
+	"libriary_system/shared/auth"
 	"libriary_system/shared/log"
 )
 
@@ -28,6 +29,19 @@ func main() {
 		log.Error("load configuration", "error", err)
 		os.Exit(1)
 	}
+	startupCtx, cancelStartup := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancelStartup()
+	verifier, err := auth.NewVerifier(startupCtx, cfg.OIDC, nil)
+	if err != nil {
+		log.Error("initialize OIDC verifier", "error", err)
+		os.Exit(1)
+	}
+	userAuth, err := auth.NewMiddleware(verifier, cfg.OIDC.Audience)
+	if err != nil {
+		log.Error("configure user authentication", "error", err)
+		os.Exit(1)
+	}
+
 	breakerConfig := pkg.CircuitBreakerConfig{
 		FailureThreshold: 3,
 		MaxHalfOpen:      1,
@@ -53,6 +67,22 @@ func main() {
 		os.Exit(1)
 	}
 
+	workerTokens, err := auth.NewClientCredentialsSource(cfg.Worker, verifier, nil)
+	if err != nil {
+		log.Error("configure worker token source", "error", err)
+		os.Exit(1)
+	}
+	workerLibraries, err := libraryclient.NewWorkerClient(cfg.LibraryServiceURL, nil, libraryBreaker, workerTokens)
+	if err != nil {
+		log.Error("configure worker library client", "error", err)
+		os.Exit(1)
+	}
+	workerRatings, err := ratingclient.NewWorkerClient(cfg.RatingServiceURL, nil, ratingBreaker, workerTokens)
+	if err != nil {
+		log.Error("configure worker rating client", "error", err)
+		os.Exit(1)
+	}
+
 	redisOptions, err := redis.ParseURL(cfg.RedisURL)
 	if err != nil {
 		log.Error("configure Redis", "error", err)
@@ -65,7 +95,7 @@ func main() {
 		Workers:        3,
 		RetryDelay:     10 * time.Second,
 		AttemptTimeout: 10 * time.Second,
-	}, libraries, ratings)
+	}, workerLibraries, workerRatings)
 	initCtx, cancelInit := context.WithTimeout(context.Background(), 5*time.Second)
 	err = returnQueue.Init(initCtx)
 	cancelInit()
@@ -85,7 +115,7 @@ func main() {
 	handler := gatewayhttp.NewHandler(gateway)
 	server := &http.Server{
 		Addr:              cfg.HTTPAddress,
-		Handler:           gatewayhttp.NewRouter(handler),
+		Handler:           gatewayhttp.NewRouter(handler, userAuth),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      20 * time.Second,

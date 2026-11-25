@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -299,7 +300,12 @@ func (useCase *GatewayUseCase) Return(
 }
 
 func (useCase *GatewayUseCase) enqueueReturnJob(ctx context.Context, job ReturnJob, cause error) error {
-	if !IsRetryable(cause) {
+	// The reservation is already closed and ownership has been checked. Losing
+	// caller authorization between completion steps must not abandon this work;
+	// the scoped worker can finish it using its own service identity.
+	var status interface{ StatusCode() int }
+	credentialsExpired := errors.As(cause, &status) && status.StatusCode() == http.StatusUnauthorized
+	if !IsRetryable(cause) && !credentialsExpired {
 		return cause
 	}
 	if useCase.returnQueue == nil {

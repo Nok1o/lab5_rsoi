@@ -10,9 +10,8 @@ on:
 permissions:
   contents: read
 
-# Bootstrap only: OAuth API tests and cloud deployment will be connected after
-# authorization is implemented and an Identity Provider is selected/configured.
-# Do not run Lab 4 tests in place of the Lab 5 Classroom collection.
+# PRs never receive Auth0 credentials. The trusted integration job starts a
+# fresh Compose project; it does not deploy, publish images or access the cloud.
 jobs:
   check:
     name: Build, unit tests and Helm checks
@@ -27,5 +26,114 @@ jobs:
       - uses: azure/setup-helm@v4.3.1
         with:
           version: v4.3.1
-      - name: Check the migrated baseline without accessing the cloud
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: scripts/package-lock.json
+      - name: Install pinned Newman and test the runner
+        run: |
+          npm ci --prefix scripts --ignore-scripts --no-audit --no-fund
+          npm test --prefix scripts
+      - name: Build, test and validate deployment templates
         run: bash scripts/check.sh
+
+  oauth-integration:
+    name: Auth0 OAuth collection (isolated Compose)
+    needs: check
+    if: github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      checks: write
+      actions: read
+    env:
+      COMPOSE_PROJECT_NAME: lab5-ci-${{ github.run_id }}-${{ github.run_attempt }}
+      OIDC_ISSUER: ${{ vars.OIDC_ISSUER }}
+      OIDC_AUDIENCE: ${{ vars.OIDC_AUDIENCE }}
+      OIDC_INTERNAL_AUDIENCE: ${{ vars.OIDC_INTERNAL_AUDIENCE }}
+      OIDC_WORKER_CLIENT_ID: ${{ vars.OIDC_WORKER_CLIENT_ID }}
+      OIDC_WORKER_CLIENT_SECRET: ${{ secrets.OIDC_WORKER_CLIENT_SECRET }}
+      AUTH0_TEST_CLIENT_ID: ${{ vars.AUTH0_TEST_CLIENT_ID }}
+      AUTH0_TEST_CLIENT_SECRET: ${{ secrets.AUTH0_TEST_CLIENT_SECRET }}
+      AUTH0_TEST_USERNAME: ${{ secrets.AUTH0_TEST_USERNAME }}
+      AUTH0_TEST_PASSWORD: ${{ secrets.AUTH0_TEST_PASSWORD }}
+      BASE_URL: http://localhost:8080
+      TEST_REPORT_DIR: ${{ github.workspace }}/test-reports
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: scripts/package-lock.json
+      - name: Require Auth0 configuration (do not silently skip integration)
+        id: configuration
+        shell: bash
+        run: |
+          : "${OIDC_ISSUER:?Set repository variable OIDC_ISSUER}"
+          : "${OIDC_AUDIENCE:?Set repository variable OIDC_AUDIENCE}"
+          : "${OIDC_INTERNAL_AUDIENCE:?Set repository variable OIDC_INTERNAL_AUDIENCE}"
+          : "${OIDC_WORKER_CLIENT_ID:?Set repository variable OIDC_WORKER_CLIENT_ID}"
+          : "${OIDC_WORKER_CLIENT_SECRET:?Set repository secret OIDC_WORKER_CLIENT_SECRET}"
+          : "${AUTH0_TEST_CLIENT_ID:?Set repository variable AUTH0_TEST_CLIENT_ID}"
+          : "${AUTH0_TEST_CLIENT_SECRET:?Set repository secret AUTH0_TEST_CLIENT_SECRET}"
+          : "${AUTH0_TEST_USERNAME:?Set repository secret AUTH0_TEST_USERNAME}"
+          : "${AUTH0_TEST_PASSWORD:?Set repository secret AUTH0_TEST_PASSWORD}"
+      - name: Install pinned Newman
+        run: npm ci --prefix scripts --ignore-scripts --no-audit --no-fund
+      - name: Build and start fresh services
+        run: docker compose --env-file /dev/null --project-name "$COMPOSE_PROJECT_NAME" up --build --detach
+      - name: Wait for every service
+        shell: bash
+        run: |
+          for port in 8080 8060 8050 8070; do
+            ready=false
+            for attempt in $(seq 1 60); do
+              if curl --fail --silent --output /dev/null --max-time 3 "http://localhost:$port/manage/health"; then
+                ready=true
+                break
+              fi
+              sleep 2
+            done
+            if [[ "$ready" != true ]]; then
+              echo "Service on port $port did not become healthy" >&2
+              exit 1
+            fi
+          done
+      - name: Run Lab5 OAuth collection
+        id: oauth
+        uses: classroom-resources/autograding-command-grader@v1
+        with:
+          test-name: Run Postman
+          command: bash scripts/test-script.sh v4
+          timeout: 3
+          max-score: 10
+      - name: Publish Classroom result
+        if: always() && steps.oauth.outputs.result != ''
+        uses: classroom-resources/autograding-grading-reporter@v1
+        env:
+          OAUTH_RESULTS: ${{ steps.oauth.outputs.result }}
+        with:
+          runners: oauth
+      - name: Upload sanitized assertion report only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lab5-oauth-assertions
+          path: ${{ env.TEST_REPORT_DIR }}/newman.xml
+          if-no-files-found: ignore
+          retention-days: 3
+      - name: Preserve failure even if a grading action only publishes a score
+        if: always() && steps.oauth.outcome != '' && steps.oauth.outcome != 'skipped'
+        shell: bash
+        run: |
+          test -s "$TEST_REPORT_DIR/newman.xml"
+          grep --quiet '<testsuites><testsuite name="Lab5 OAuth collection" tests="[0-9]*" failures="0">' "$TEST_REPORT_DIR/newman.xml"
+      - name: Service state on failure (no environment/body dumps)
+        if: failure() && steps.configuration.outcome == 'success'
+        run: docker compose --env-file /dev/null --project-name "$COMPOSE_PROJECT_NAME" ps --all
+      - name: Remove this run's containers and fresh database volumes
+        if: always() && steps.configuration.outcome == 'success'
+        run: docker compose --env-file /dev/null --project-name "$COMPOSE_PROJECT_NAME" down --volumes --remove-orphans

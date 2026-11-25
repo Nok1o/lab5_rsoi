@@ -3,6 +3,7 @@ package http_test
 import (
 	"context"
 	"encoding/json"
+	"libriary_system/internal/testauth"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -78,15 +79,15 @@ func (repo *memoryRepo) Cancel(ctx context.Context, uid uuid.UUID, username stri
 func TestReservationRoutes(t *testing.T) {
 	repo := &memoryRepo{items: make(map[uuid.UUID]domain.Reservation)}
 	handler := reservationhttp.NewHandler(usecase.NewReservationUseCase(repo))
-	router := reservationhttp.NewRouter(handler)
+	router := reservationhttp.NewRouter(handler, testauth.User(t))
 	today := time.Now().UTC()
 	tillDate := today.AddDate(0, 0, 1).Format("2006-01-02")
 	returnDate := today.AddDate(0, 0, 2).Format("2006-01-02")
 	libraryUID, bookUID := uuid.New(), uuid.New()
 
 	call := func(method, path, username, body string) *httptest.ResponseRecorder {
-		request := httptest.NewRequest(method, path, strings.NewReader(body))
-		request.Header.Set("X-User-Name", username)
+		request := testauth.NewRequest(method, path, strings.NewReader(body))
+		testauth.Login(request, username)
 		response := httptest.NewRecorder()
 		router.ServeHTTP(response, request)
 		return response

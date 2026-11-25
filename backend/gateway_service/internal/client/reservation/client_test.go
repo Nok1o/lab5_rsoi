@@ -1,9 +1,9 @@
 package reservation
 
 import (
-	"context"
 	"errors"
 	"io"
+	"libriary_system/internal/testauth"
 	"net/http"
 	"strings"
 	"testing"
@@ -26,8 +26,8 @@ func TestClientOperations(t *testing.T) {
 	responseBody := `{"reservationUid":"` + reservationUID.String() + `","bookUid":"` + bookUID.String() + `","libraryUid":"` + libraryUID.String() + `","status":"RENTED","startDate":"2026-09-20","tillDate":"2026-09-22"}`
 	returnBody := strings.Replace(responseBody, `"status":"RENTED"`, `"status":"RETURNED"`, 1)
 	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		if request.Header.Get("X-User-Name") != "alice" {
-			t.Errorf("X-User-Name = %q", request.Header.Get("X-User-Name"))
+		if request.Header.Get("Authorization") != "Bearer user:alice" {
+			t.Errorf("Authorization = %q", request.Header.Get("Authorization"))
 		}
 		var code int
 		var body string
@@ -66,7 +66,7 @@ func TestClientOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := context.Background()
+	ctx := testauth.Context(t, "alice")
 	items, err := client.ListByUsername(ctx, "alice")
 	if err != nil || len(items) != 1 || items[0].Id != reservationUID || items[0].Username != "alice" {
 		t.Fatalf("ListByUsername = (%+v, %v)", items, err)
@@ -114,7 +114,7 @@ func TestClientMapsErrors(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = client.GetByUIDAndUsername(context.Background(), uuid.New(), "alice")
+		_, err = client.GetByUIDAndUsername(testauth.Context(t, "alice"), uuid.New(), "alice")
 		if check.want != nil && !errors.Is(err, check.want) {
 			t.Fatalf("error = %v, want %v", err, check.want)
 		}

@@ -13,6 +13,7 @@ import (
 
 	"libriary_system/reservation_service/internal/domain"
 	"libriary_system/reservation_service/internal/usecase"
+	"libriary_system/shared/auth"
 	"libriary_system/shared/log"
 )
 
@@ -36,7 +37,7 @@ func NewHandler(reservations ReservationUseCase) *Handler {
 }
 
 func (handler *Handler) ListReservations(w stdhttp.ResponseWriter, request *stdhttp.Request) {
-	reservations, err := handler.reservations.ListByUsername(request.Context(), request.Header.Get("X-User-Name"))
+	reservations, err := handler.reservations.ListByUsername(request.Context(), auth.SubjectFromContext(request.Context()))
 	if err != nil {
 		handler.writeError(w, err)
 		return
@@ -51,7 +52,7 @@ func (handler *Handler) ListReservations(w stdhttp.ResponseWriter, request *stdh
 func (handler *Handler) CountReservations(w stdhttp.ResponseWriter, request *stdhttp.Request) {
 	count, err := handler.reservations.CountByUsernameAndStatus(
 		request.Context(),
-		request.Header.Get("X-User-Name"),
+		auth.SubjectFromContext(request.Context()),
 		domain.ReservationStatus(request.URL.Query().Get("status")),
 	)
 	if err != nil {
@@ -66,7 +67,7 @@ func (handler *Handler) GetReservation(w stdhttp.ResponseWriter, request *stdhtt
 	if !ok {
 		return
 	}
-	reservation, err := handler.reservations.GetByUIDAndUsername(request.Context(), uid, request.Header.Get("X-User-Name"))
+	reservation, err := handler.reservations.GetByUIDAndUsername(request.Context(), uid, auth.SubjectFromContext(request.Context()))
 	if err != nil {
 		handler.writeError(w, err)
 		return
@@ -85,7 +86,7 @@ func (handler *Handler) Rent(w stdhttp.ResponseWriter, request *stdhttp.Request)
 		writeJSON(w, stdhttp.StatusBadRequest, errorResponse{Message: "tillDate must be YYYY-MM-DD"})
 		return
 	}
-	reservation, err := handler.reservations.Rent(request.Context(), request.Header.Get("X-User-Name"), body.LibraryUID, body.BookUID, tillDate)
+	reservation, err := handler.reservations.Rent(request.Context(), auth.SubjectFromContext(request.Context()), body.LibraryUID, body.BookUID, tillDate)
 	if err != nil {
 		handler.writeError(w, err)
 		return
@@ -109,7 +110,7 @@ func (handler *Handler) Return(w stdhttp.ResponseWriter, request *stdhttp.Reques
 		writeJSON(w, stdhttp.StatusBadRequest, errorResponse{Message: "date must be YYYY-MM-DD"})
 		return
 	}
-	reservation, err := handler.reservations.Return(request.Context(), uid, request.Header.Get("X-User-Name"), returnDate)
+	reservation, err := handler.reservations.Return(request.Context(), uid, auth.SubjectFromContext(request.Context()), returnDate)
 	if err != nil {
 		handler.writeError(w, err)
 		return
@@ -122,7 +123,7 @@ func (handler *Handler) Cancel(w stdhttp.ResponseWriter, request *stdhttp.Reques
 	if !ok {
 		return
 	}
-	if err := handler.reservations.Cancel(request.Context(), uid, request.Header.Get("X-User-Name")); err != nil {
+	if err := handler.reservations.Cancel(request.Context(), uid, auth.SubjectFromContext(request.Context())); err != nil {
 		handler.writeError(w, err)
 		return
 	}
