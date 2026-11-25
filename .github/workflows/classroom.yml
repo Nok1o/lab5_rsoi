@@ -103,11 +103,20 @@ jobs:
             fi
           done
       - name: Run Lab5 OAuth collection
+        id: oauth_test
+        run: bash scripts/test-script.sh v4
+      # The Classroom command grader intentionally strips the child's env.
+      # Run OAuth in a normal step; grade only its sanitized report and outcome.
+      - name: Grade Lab5 OAuth collection
+        if: always() && steps.oauth_test.outcome != '' && steps.oauth_test.outcome != 'skipped'
         id: oauth
         uses: classroom-resources/autograding-command-grader@v1
         with:
           test-name: Run Postman
-          command: bash scripts/test-script.sh v4
+          command: >-
+            test '${{ steps.oauth_test.outcome }}' = success &&
+            test -s test-reports/newman.xml &&
+            grep --quiet '<testsuites><testsuite name="Lab5 OAuth collection" tests="[0-9]*" failures="0">' test-reports/newman.xml
           timeout: 3
           max-score: 10
       - name: Publish Classroom result
