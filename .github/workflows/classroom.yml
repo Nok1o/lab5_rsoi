@@ -141,14 +141,17 @@ jobs:
             ${{ env.TEST_REPORT_DIR }}/worker.xml
           if-no-files-found: ignore
           retention-days: 3
-      - name: Preserve failure even if a grading action only publishes a score
+      - name: Verify results and celebrate success
         if: always() && steps.oauth.outcome != '' && steps.oauth.outcome != 'skipped'
         shell: bash
         run: |
+          test '${{ steps.oauth_test.outcome }}' = success
+          test '${{ steps.oauth.outcome }}' = success
           test -s "$TEST_REPORT_DIR/newman.xml"
           grep --quiet '<testsuites><testsuite name="Lab5 OAuth collection" tests="[0-9]*" failures="0">' "$TEST_REPORT_DIR/newman.xml"
           test '${{ steps.worker_test.outcome }}' = success
           grep --quiet '<testsuites><testsuite name="Lab5 Auth0 deferred worker" tests="8" failures="0">' "$TEST_REPORT_DIR/worker.xml"
+          printf 'All tests passed\n✨🌟💖💎🦄💎💖🌟✨🌟💖💎🦄💎💖🌟✨\n'
       - name: Service state on failure (no environment/body dumps)
         if: failure() && steps.configuration.outcome == 'success'
         run: docker compose --env-file /dev/null --project-name "$COMPOSE_PROJECT_NAME" ps --all
