@@ -154,7 +154,7 @@ test('actual 14-request collection runs against an HTTPS stand-in with no creden
       assert.match(result.stdout, /AssertionError/);
       assert.match(result.stdout, /inside "Gateway API/);
     }
-    else { assert.equal(result.code, undefined); assert.match(result.stdout, /Requests: 14; assertions: 14; failures: 0/); }
+    else { assert.equal(result.code, undefined); assert.match(report, /14 assertions passed/); }
   }
   assert.equal(grants, 2);
 });

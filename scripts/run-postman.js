@@ -163,8 +163,6 @@ async function main(env = process.env, variant = process.argv[2] || 'v4') {
       });
     });
     const result = safeResult(summary, sensitive);
-    console.log(`Requests: ${result.requests}; assertions: ${result.assertions}; failures: ${result.failures.length}`);
-    for (const failure of result.failures) console.error(`${failure.name}: ${failure.message}`);
     const reportDirectory = path.resolve(env.TEST_REPORT_DIR || path.join(__dirname, '..', 'test-reports'));
     fs.mkdirSync(reportDirectory, { recursive: true });
     fs.writeFileSync(path.join(reportDirectory, 'newman.xml'), junit(result), { mode: 0o600 });

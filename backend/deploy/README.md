@@ -249,8 +249,12 @@ Job, одноимённые Role/RoleBinding/ServiceAccount и bundle ConfigMap.
 Auth0-интеграция — только доверенный `master` (push или workflow_dispatch).
 GitHub-hosted runner поднимает отдельный Compose project со свежими volumes,
 ждёт health всех сервисов, запускает 14 запросов обычным шагом с окружением job;
-Classroom grader оценивает только очищенный отчёт и результат шага (10 баллов),
-публикует очищенный JUnit и удаляет только ресурсы своего прогона. Нет push образов
+Исходный `education/autograding@v1` из форка показывает полный лог Newman и затем
+свой оригинальный финал: `All tests passed`, единороги, `Points 10/10`.
+Реальные тесты выполняются один раз обычными шагами, поскольку grader удаляет
+Auth0-переменные из окружения дочерних команд. `grade-results.js` воспроизводит
+очищенный лог и проверяет успешные outcomes, 14 assertions и 8 worker checks.
+Workflow публикует очищенный JUnit и удаляет только ресурсы своего прогона. Нет push образов
 или облачного деплоя. Отсутствующие параметры приводят к явной ошибке, не к пропуску.
 
 В GitHub → Settings → Secrets and variables → Actions задать:

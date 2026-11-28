@@ -2,12 +2,12 @@
   "tests": [
     {
       "name": "Run Postman",
-      "setup": "npm ci --prefix scripts --ignore-scripts --no-audit --no-fund",
-      "run": "bash scripts/test-script.sh v4",
+      "setup": "",
+      "run": "node scripts/grade-results.js",
       "input": "",
       "output": "",
       "comparison": "included",
-      "timeout": 180,
+      "timeout": 1,
       "points": 10
     }
   ]
