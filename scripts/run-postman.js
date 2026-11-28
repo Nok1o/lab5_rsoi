@@ -1,11 +1,11 @@
 'use strict';
 
 // Newman receives credentials in memory, never in command-line arguments or an
-// exported environment/report. CLI shows requests, assertions and statistics;
-// sandbox console and raw failure details stay off to avoid credential dumps.
+// exported environment/report. Use the complete standard CLI reporter;
+// redact credential values before it formats console messages and failures.
 const fs = require('node:fs');
 const path = require('node:path');
-const cliReporter = { noConsole: true, noFailures: true };
+const { inspect } = require('node:util');
 
 function required(env, name) {
   const value = env[name];
@@ -83,12 +83,27 @@ function redact(value, sensitive) {
   let text = String(value || '');
   for (const secret of sensitive) {
     if (!secret) continue;
-    for (const form of new Set([secret, encodeURIComponent(secret), new URLSearchParams({ v: secret }).toString().slice(2), JSON.stringify(secret).slice(1, -1)])) {
+    for (const form of new Set([secret, encodeURIComponent(secret), new URLSearchParams({ v: secret }).toString().slice(2), JSON.stringify(secret).slice(1, -1), inspect(secret, { colors: false }).slice(1, -1)])) {
       text = text.split(form).join('[REDACTED]');
     }
   }
   // Also cover JWTs from an unexpected error response or failure message.
   return text.replace(/\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '[REDACTED JWT]');
+}
+
+function protectCLI(run, sensitive) {
+  // Keep every report section enabled. Only credential values are replaced;
+  // assertion results, counts and failure details otherwise remain unchanged.
+  run.prependListener('console', (_error, args) => {
+    args.messages = args.messages.map(value => redact(typeof value === 'string' ? value : inspect(value, { depth: null, colors: false }), sensitive));
+  });
+  run.prependListener('done', (_error, summary) => {
+    for (const failure of summary?.run?.failures || []) {
+      for (const key of ['name', 'test', 'message', 'stack']) {
+        if (typeof failure.error?.[key] === 'string') failure.error[key] = redact(failure.error[key], sensitive);
+      }
+    }
+  });
 }
 
 function xml(value) {
@@ -132,11 +147,13 @@ async function main(env = process.env, variant = process.argv[2] || 'v4') {
     const summary = await new Promise((resolve, reject) => {
       const run = newman.run({
         collection, environment: environment(config, tokenEndpoint), reporters: ['cli'],
-        reporter: { cli: cliReporter }, verbose: false,
+        verbose: false,
         timeout: 120000, timeoutRequest: 15000, timeoutScript: 5000,
         ignoreRedirects: true, bail: false,
       }, (error, result) => error ? reject(error) : resolve(result));
-      run.on('request', (_error, args) => {
+      protectCLI(run, sensitive);
+      run.prependListener('request', (error, args) => {
+        if (typeof error?.message === 'string') error.message = redact(error.message, sensitive);
         if (!args.response) return;
         // Capture credentials for redaction only; never print/store bodies.
         try {
@@ -144,7 +161,6 @@ async function main(env = process.env, variant = process.argv[2] || 'v4') {
           for (const key of ['access_token', 'id_token', 'refresh_token']) if (typeof body[key] === 'string') sensitive.add(body[key]);
         } catch { /* Ordinary non-JSON/empty API responses are not credentials. */ }
       });
-      // Do not attach the console event: collection console output may contain secrets.
     });
     const result = safeResult(summary, sensitive);
     console.log(`Requests: ${result.requests}; assertions: ${result.assertions}; failures: ${result.failures.length}`);
@@ -160,5 +176,5 @@ async function main(env = process.env, variant = process.argv[2] || 'v4') {
   }
 }
 
-module.exports = { configuration, environment, redact, safeResult, junit, discover, cliReporter, main };
+module.exports = { configuration, environment, redact, safeResult, junit, discover, protectCLI, main };
 if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });

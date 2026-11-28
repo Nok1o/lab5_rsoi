@@ -86,13 +86,15 @@ test('discovery enforces issuer/origin, disables redirects and bounds the body w
   assert(canceled);
 });
 
-test('Newman CLI prints the statistics table without sandbox console credentials', async t => {
+test('complete Newman CLI includes console and statistics while masking credential values', async t => {
   const server = http.createServer((_req, res) => { res.end('{}'); });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => server.close());
-  const code = `const n=require('newman');const{cliReporter}=require('./run-postman');let seen=0;const run=n.run({reporters:['cli'],reporter:{cli:cliReporter},verbose:false,collection:{info:{name:'console privacy',schema:'https://schema.getpostman.com/json/collection/v2.1.0/collection.json'},event:[{listen:'prerequest',script:{type:'text/javascript',exec:['console.log(pm.environment.get("secret"))']}}],item:[{name:'request',request:{method:'GET',url:process.env.TEST_URL}}]},environment:{values:[{key:'secret',value:process.env.TEST_SECRET,enabled:true}]}},(e,s)=>{if(e||s.run.failures.length)process.exitCode=1;console.log('console events='+seen);});run.on('console',()=>seen++);`;
+  const code = `const n=require('newman');const{protectCLI}=require('./run-postman');let seen=0;const run=n.run({reporters:['cli'],verbose:false,collection:{info:{name:'console privacy',schema:'https://schema.getpostman.com/json/collection/v2.1.0/collection.json'},event:[{listen:'prerequest',script:{type:'text/javascript',exec:['console.log("visible console diagnostic", pm.environment.get("secret"))']}}],item:[{name:'request',request:{method:'GET',url:process.env.TEST_URL}}]},environment:{values:[{key:'secret',value:process.env.TEST_SECRET,enabled:true}]}},(e,s)=>{if(e||s.run.failures.length)process.exitCode=1;console.log('console events='+seen);});protectCLI(run,new Set([process.env.TEST_SECRET]));run.on('console',()=>seen++);`;
   const result = await exec(process.execPath, ['-e', code], { cwd: __dirname, env: { ...process.env, TEST_URL: `http://127.0.0.1:${server.address().port}`, TEST_SECRET: fake.AUTH0_TEST_PASSWORD } });
   assert.match(result.stdout, /console events=1/);
+  assert.match(result.stdout, /visible console diagnostic/);
+  assert.match(result.stdout, /\[REDACTED\]/);
   for (const label of ['newman', 'executed', 'failed', 'iterations', 'requests', 'test-scripts', 'assertions']) assert(result.stdout.includes(label));
   assert(!result.stdout.includes(fake.AUTH0_TEST_PASSWORD));
   assert(!result.stderr.includes(fake.AUTH0_TEST_PASSWORD));
@@ -145,7 +147,13 @@ test('actual 14-request collection runs against an HTTPS stand-in with no creden
     assert.match(result.stdout, /failed/);
     assert.match(result.stdout, /Получить токен/);
     for (const secret of [fake.AUTH0_TEST_PASSWORD, fake.AUTH0_TEST_CLIENT_SECRET, accessToken, encodeURIComponent(fake.AUTH0_TEST_PASSWORD)]) assert(!output.includes(secret), 'credential leaked from runner/report');
-    if (fail) { assert.notEqual(result.code, undefined); assert(!report.includes('failures="0"')); }
+    if (fail) {
+      assert.notEqual(result.code, undefined);
+      assert(!report.includes('failures="0"'));
+      assert.match(result.stdout, /failure\s+detail/);
+      assert.match(result.stdout, /AssertionError/);
+      assert.match(result.stdout, /inside "Gateway API/);
+    }
     else { assert.equal(result.code, undefined); assert.match(result.stdout, /Requests: 14; assertions: 14; failures: 0/); }
   }
   assert.equal(grants, 2);

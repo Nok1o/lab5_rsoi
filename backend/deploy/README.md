@@ -59,8 +59,8 @@ Redis integration-тесты требуют `REDIS_TEST_URL`. Для curl уст
 Newman получает токен сам через Password grant, используя `AUTH0_TEST_CLIENT_ID`,
 `AUTH0_TEST_CLIENT_SECRET`, `AUTH0_TEST_USERNAME`, `AUTH0_TEST_PASSWORD` из shell.
 Пароли/JWT не передаются в CLI-аргументах и не экспортируются в отчёты. В логе —
-стандартный CLI-отчёт Newman с запросами, проверками и итоговой таблицей; console
-скриптов и необработанные детали ошибок выключены, ошибки выводятся после очистки.
+полный стандартный CLI-отчёт Newman с запросами, проверками, console скриптов,
+итоговой статистикой и подробной таблицей ошибок. Скрываются только значения credentials.
 Артефакт — очищенный `test-reports/newman.xml`. Прогон изменяет тестовые данные.
 Для Postman импортировать `v4/postman/{collection,environment}.json`, заполнить
 окружение: `identityProviderUrl` без завершающего `/`, `audience`, `clientId`,
