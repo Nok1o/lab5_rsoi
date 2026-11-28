@@ -64,9 +64,11 @@ for service in "${services[@]}"; do
         --namespace "$namespace" "${arguments[@]}"
       ;;
     deploy)
+      # Helm 4's default watcher needs long-lived API streams; polling also
+      # verifies readiness and tolerates VPN/HTTP2 stream interruptions better.
       helm upgrade --install "$release" "$chart_directory" \
         --kube-context "$context" --namespace "$namespace" \
-        "${arguments[@]}" --wait --timeout 10m
+        "${arguments[@]}" --wait=legacy --timeout 10m
       ;;
   esac
 done

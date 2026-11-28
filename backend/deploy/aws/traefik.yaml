@@ -1,0 +1,33 @@
+# Official Traefik chart 43.0.0. No HTTPS listener/certificate is configured:
+# authorized tests use kubectl port-forward over the TLS-protected EKS API.
+deployment:
+  replicas: 2
+ingressClass:
+  enabled: true
+  isDefaultClass: false
+providers:
+  kubernetesCRD:
+    enabled: false
+  kubernetesIngress:
+    enabled: true
+    publishedService:
+      enabled: true
+ports:
+  websecure:
+    enabled: false
+service:
+  spec:
+    type: LoadBalancer
+    loadBalancerClass: service.k8s.aws/nlb
+    allocateLoadBalancerNodePorts: false
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: ip
+    service.beta.kubernetes.io/aws-load-balancer-attributes: load_balancing.cross_zone.enabled=true
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi

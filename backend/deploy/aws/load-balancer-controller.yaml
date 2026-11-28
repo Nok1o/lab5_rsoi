@@ -1,0 +1,21 @@
+# Official aws-load-balancer-controller chart 3.6.0. Its IAM policy matches
+# the existing rsoi-lab4-load-balancer-controller role; no extra IAM grants.
+clusterName: rsoi-lab5-aws
+region: us-east-2
+vpcId: vpc-0fc0d510da47e906a
+replicaCount: 2
+serviceAccount:
+  create: true
+  name: aws-load-balancer-controller
+# Only Kubernetes Service/NLB is needed; Traefik handles Ingress.
+controllerConfig:
+  featureGates:
+    ALBGatewayAPI: false
+    NLBGatewayAPI: false
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi

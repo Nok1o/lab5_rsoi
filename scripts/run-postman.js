@@ -1,9 +1,11 @@
 'use strict';
 
 // Newman receives credentials in memory, never in command-line arguments or an
-// exported environment/report. Do not add CLI/JSON reporters or console dumps.
+// exported environment/report. CLI shows requests, assertions and statistics;
+// sandbox console and raw failure details stay off to avoid credential dumps.
 const fs = require('node:fs');
 const path = require('node:path');
+const cliReporter = { noConsole: true, noFailures: true };
 
 function required(env, name) {
   const value = env[name];
@@ -129,7 +131,8 @@ async function main(env = process.env, variant = process.argv[2] || 'v4') {
     const collection = JSON.parse(fs.readFileSync(path.join(__dirname, '..', variant, 'postman', 'collection.json'), 'utf8'));
     const summary = await new Promise((resolve, reject) => {
       const run = newman.run({
-        collection, environment: environment(config, tokenEndpoint), reporters: [],
+        collection, environment: environment(config, tokenEndpoint), reporters: ['cli'],
+        reporter: { cli: cliReporter }, verbose: false,
         timeout: 120000, timeoutRequest: 15000, timeoutScript: 5000,
         ignoreRedirects: true, bail: false,
       }, (error, result) => error ? reject(error) : resolve(result));
@@ -157,5 +160,5 @@ async function main(env = process.env, variant = process.argv[2] || 'v4') {
   }
 }
 
-module.exports = { configuration, environment, redact, safeResult, junit, discover, main };
+module.exports = { configuration, environment, redact, safeResult, junit, discover, cliReporter, main };
 if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });

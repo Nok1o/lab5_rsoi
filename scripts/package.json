@@ -2,11 +2,12 @@
   "name": "lab5-api-checks",
   "private": true,
   "version": "1.0.0",
-  "engines": { "node": ">=22" },
+  "engines": { "node": ">=22.19.0" },
   "scripts": {
     "test": "node --test *.test.js",
     "test:api": "node run-postman.js v4",
-    "test:worker": "node test-worker.js"
+    "test:worker": "node test-worker.js",
+    "test:cloud": "node test-cloud.js"
   },
-  "dependencies": { "newman": "6.2.1" }
+  "dependencies": { "@kubernetes/client-node": "2.0.2", "newman": "6.2.1", "ws": "8.23.1" }
 }

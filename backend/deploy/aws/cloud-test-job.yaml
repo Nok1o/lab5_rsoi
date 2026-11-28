@@ -1,0 +1,131 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: lab5-cloud-test-once
+  namespace: library-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: lab5-cloud-test-once
+  namespace: library-system
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["gateway-service"]
+    verbs: ["patch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    resourceNames: ["library-service", "rating-service", "gateway-service"]
+    verbs: ["get", "patch", "update"]
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    resourceNames: ["library-infra-redis"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    resourceNames: ["library-infra-redis-0"]
+    verbs: ["create", "get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: lab5-cloud-test-once
+  namespace: library-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: lab5-cloud-test-once
+subjects:
+  - kind: ServiceAccount
+    name: lab5-cloud-test-once
+    namespace: library-system
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: lab5-cloud-test-once
+  namespace: library-system
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 900
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      serviceAccountName: lab5-cloud-test-once
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: tests
+          image: docker.io/nok1o/lab4_rsoi@sha256:16f4efacd803392c4c98f81ec52f9f9d4b06ee15379229c1150df68cc128d6c4
+          command: ["/bin/bash", "-euo", "pipefail", "-c"]
+          args:
+            - |
+              cd /work
+              tar -xzf /bundle/tests.tar.gz
+              ln -s /usr/local/lib/node_modules scripts/node_modules
+              set +e
+              node scripts/test-cloud.js
+              test_status=$?
+              set -e
+              # Only sanitized aggregate JUnit reports, never Newman raw state.
+              node -e 'const fs=require("node:fs");for(const name of ["newman.xml","worker-cloud.xml"]){const file="/work/reports/"+name;if(fs.existsSync(file))console.log("LAB5_REPORT "+name+" "+fs.readFileSync(file).toString("base64"));}'
+              exit "$test_status"
+          envFrom:
+            - configMapRef:
+                name: oidc-config
+            - secretRef:
+                name: lab5-cloud-test-credentials
+          env:
+            - name: KUBE_CONTEXT
+              value: rsoi-lab5-aws
+            - name: KUBE_NAMESPACE
+              value: library-system
+            - name: KUBECONFIG
+              value: /bundle/kubeconfig
+            - name: CLOUD_TEST_INTERNAL_NETWORK
+              value: "yes"
+            - name: WORKER_TEST_ALLOW_FAILURE_INJECTION
+              value: "yes"
+            - name: TEST_REPORT_DIR
+              value: /work/reports
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          volumeMounts:
+            - name: work
+              mountPath: /work
+            - name: bundle
+              mountPath: /bundle
+              readOnly: true
+            - name: kube-cache
+              mountPath: /home/runner/.kube
+      volumes:
+        - name: work
+          emptyDir: {}
+        - name: bundle
+          configMap:
+            name: lab5-cloud-test-bundle
+        - name: kube-cache
+          emptyDir: {}

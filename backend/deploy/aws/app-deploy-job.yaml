@@ -1,0 +1,134 @@
+# One-off fallback when local Helm cannot keep a stable EKS connection.
+# Mount only charts/values in lab5-app-chart-bundle, never .env or credentials.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: lab5-app-deploy-once
+  namespace: library-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: lab5-app-deploy-once
+  namespace: library-system
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["services", "secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods", "events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: lab5-app-deploy-once
+  namespace: library-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: lab5-app-deploy-once
+subjects:
+  - kind: ServiceAccount
+    name: lab5-app-deploy-once
+    namespace: library-system
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: lab5-app-deploy-once
+  namespace: library-system
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 900
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      serviceAccountName: lab5-app-deploy-once
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: helm
+          # Previously built lab4 runner, immutable linux/amd64 digest.
+          image: docker.io/nok1o/lab4_rsoi@sha256:16f4efacd803392c4c98f81ec52f9f9d4b06ee15379229c1150df68cc128d6c4
+          command: ["/bin/bash", "-euo", "pipefail", "-c"]
+          args:
+            - |
+              cd /work
+              tar -xzf /bundle/charts.tar.gz
+              for service in library rating; do
+                release="$service-service"
+                metadata="$(helm status "$release" --namespace library-system --output json)"
+                phase="$(printf '%s' "$metadata" | jq -r '.info.status')"
+                revision="$(printf '%s' "$metadata" | jq -r '.version')"
+                if [[ "$phase" == pending-install && "$revision" == 1 ]]; then
+                  helm rollback "$release" 1 --namespace library-system --no-hooks \
+                    --wait=legacy --timeout 3m \
+                    --description 'Recover initial install using identical manifests inside cluster'
+                elif [[ "$phase" != deployed ]]; then
+                  echo "Unexpected release state for $release; inspect before recovery" >&2
+                  exit 1
+                fi
+              done
+              for service in library rating reservation gateway; do
+                helm upgrade --install "$service-service" helm/service \
+                  --namespace library-system --values "helm/values/$service.yaml" \
+                  --set-string image.namespace=nok1o \
+                  --set-string image.repository=lab5_rsoi \
+                  --set-string "image.tag=$IMAGE_TAG" --wait=legacy --timeout 3m
+              done
+          env:
+            - name: IMAGE_TAG
+              value: cloud-5a57aa2-20261127
+            - name: HELM_CACHE_HOME
+              value: /work/cache
+            - name: HELM_CONFIG_HOME
+              value: /work/config
+            - name: HELM_DATA_HOME
+              value: /work/data
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          volumeMounts:
+            - name: work
+              mountPath: /work
+            - name: bundle
+              mountPath: /bundle
+              readOnly: true
+            - name: kube-cache
+              mountPath: /home/runner/.kube
+      volumes:
+        - name: work
+          emptyDir: {}
+        - name: bundle
+          configMap:
+            name: lab5-app-chart-bundle
+        - name: kube-cache
+          emptyDir: {}

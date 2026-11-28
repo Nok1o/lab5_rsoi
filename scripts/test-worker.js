@@ -224,5 +224,5 @@ async function main(env = process.env) {
   return result;
 }
 
-module.exports = { settings, inspectJobs, waitFor, report, scenario };
+module.exports = { settings, inspectJobs, waitFor, report, scenario, request, userToken };
 if (require.main === module) main().catch(() => { console.error('Worker test configuration or report failed; verify required variables and the report directory'); process.exitCode = 1; });

@@ -86,13 +86,15 @@ test('discovery enforces issuer/origin, disables redirects and bounds the body w
   assert(canceled);
 });
 
-test('Newman reporters:[] suppresses CLI and sandbox console credentials', async t => {
+test('Newman CLI prints the statistics table without sandbox console credentials', async t => {
   const server = http.createServer((_req, res) => { res.end('{}'); });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => server.close());
-  const code = `const n=require('newman');let seen=0;const run=n.run({reporters:[],collection:{info:{name:'console privacy',schema:'https://schema.getpostman.com/json/collection/v2.1.0/collection.json'},event:[{listen:'prerequest',script:{type:'text/javascript',exec:['console.log(pm.environment.get("secret"))']}}],item:[{name:'request',request:{method:'GET',url:process.env.TEST_URL}}]},environment:{values:[{key:'secret',value:process.env.TEST_SECRET,enabled:true}]}},(e,s)=>{if(e||s.run.failures.length)process.exitCode=1;console.log('console events='+seen);});run.on('console',()=>seen++);`;
+  const code = `const n=require('newman');const{cliReporter}=require('./run-postman');let seen=0;const run=n.run({reporters:['cli'],reporter:{cli:cliReporter},verbose:false,collection:{info:{name:'console privacy',schema:'https://schema.getpostman.com/json/collection/v2.1.0/collection.json'},event:[{listen:'prerequest',script:{type:'text/javascript',exec:['console.log(pm.environment.get("secret"))']}}],item:[{name:'request',request:{method:'GET',url:process.env.TEST_URL}}]},environment:{values:[{key:'secret',value:process.env.TEST_SECRET,enabled:true}]}},(e,s)=>{if(e||s.run.failures.length)process.exitCode=1;console.log('console events='+seen);});run.on('console',()=>seen++);`;
   const result = await exec(process.execPath, ['-e', code], { cwd: __dirname, env: { ...process.env, TEST_URL: `http://127.0.0.1:${server.address().port}`, TEST_SECRET: fake.AUTH0_TEST_PASSWORD } });
-  assert.equal(result.stdout.trim(), 'console events=1');
+  assert.match(result.stdout, /console events=1/);
+  for (const label of ['newman', 'executed', 'failed', 'iterations', 'requests', 'test-scripts', 'assertions']) assert(result.stdout.includes(label));
+  assert(!result.stdout.includes(fake.AUTH0_TEST_PASSWORD));
   assert(!result.stderr.includes(fake.AUTH0_TEST_PASSWORD));
 });
 
@@ -139,6 +141,9 @@ test('actual 14-request collection runs against an HTTPS stand-in with no creden
     const result = await exec(process.execPath, [path.join(__dirname, 'run-postman.js'), 'v4'], { env: { ...process.env, ...fake, OIDC_ISSUER: issuer, BASE_URL: issuer, TEST_REPORT_DIR: reports, NODE_EXTRA_CA_CERTS: cert } }).catch(error => error);
     const report = fs.readFileSync(path.join(reports, 'newman.xml'), 'utf8');
     const output = String(result.stdout) + String(result.stderr) + report;
+    assert.match(result.stdout, /executed/);
+    assert.match(result.stdout, /failed/);
+    assert.match(result.stdout, /Получить токен/);
     for (const secret of [fake.AUTH0_TEST_PASSWORD, fake.AUTH0_TEST_CLIENT_SECRET, accessToken, encodeURIComponent(fake.AUTH0_TEST_PASSWORD)]) assert(!output.includes(secret), 'credential leaked from runner/report');
     if (fail) { assert.notEqual(result.code, undefined); assert(!report.includes('failures="0"')); }
     else { assert.equal(result.code, undefined); assert.match(result.stdout, /Requests: 14; assertions: 14; failures: 0/); }
