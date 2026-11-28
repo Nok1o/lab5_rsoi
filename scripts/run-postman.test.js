@@ -8,7 +8,7 @@ const os = require('node:os');
 const https = require('node:https');
 const http = require('node:http');
 const { execFile, execFileSync } = require('node:child_process');
-const { promisify } = require('node:util');
+const { promisify, stripVTControlCharacters } = require('node:util');
 const exec = promisify(execFile);
 const { configuration, environment, redact, safeResult, junit, discover } = require('./run-postman');
 
@@ -150,7 +150,7 @@ test('actual 14-request collection runs against an HTTPS stand-in with no creden
     if (fail) {
       assert.notEqual(result.code, undefined);
       assert(!report.includes('failures="0"'));
-      assert.match(result.stdout, /failure\s+detail/);
+      assert.match(stripVTControlCharacters(result.stdout), /failure\s+detail/);
       assert.match(result.stdout, /AssertionError/);
       assert.match(result.stdout, /inside "Gateway API/);
     }
